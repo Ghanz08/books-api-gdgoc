@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Library-gdgoc</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="navbar-logo">
+        <a href="#">Library-gdgoc</a>
+      </div>
+    </nav>
+
+    <div class="container">
+      <form id="bookForm">
+        <input type="hidden" id="bookId" />
+        <div>
+          <input type="text" id="title" placeholder="Book Title" required />
+        </div>
+        <div>
+          <input type="text" id="author" placeholder="Author Name" required />
+        </div>
+        <div>
+          <input type="date" id="published_at" required />
+        </div>
+        <div>
+          <button type="submit">Simpan Buku</button>
+          <button type="button" id="cancelEdit" onclick="clearForm()">Batal</button>
+        </div>
+      </form>
+
+      <div id="bookList" class="book-grid">
+        <!-- Books will be displayed here -->
+      </div>
+    </div>
+
+    <script>
+      const API_URL = "http://localhost:8000/api";
+      let books = [];
+
+      async function fetchBooks() {
+        try {
+          const response = await axios.get(`${API_URL}/books`);
+          books = response.data.data;
+          displayBooks();
+        } catch (error) {
+          console.error("Error fetching books:", error);
+        }
+      }
+
+      function displayBooks() {
+        const bookList = document.getElementById("bookList");
+        bookList.innerHTML = books
+          .map(
+            (book) => `
+                <div class="book-card">
+                    <div class="book-content">
+                        <h3 class="book-title">${book.title}</h3>
+                        <div class="book-info">
+                            <p><strong>Author:</strong> ${book.author}</p>
+                            <p><strong>Published:</strong> ${new Date(book.published_at).toLocaleDateString()}</p>
+                        </div>
+                    </div>
+                    <div class="book-actions">
+                        <button class="edit-btn" onclick="editBook(${book.id})">Edit</button>
+                        <button class="delete-btn" onclick="deleteBook(${book.id})">Delete</button>
+                    </div>
+                </div>
+            `
+          )
+          .join("");
+      }
+
+      function clearForm() {
+        document.getElementById("bookForm").reset();
+        document.getElementById("bookId").value = "";
+        const submitButton = document.querySelector('#bookForm button[type="submit"]');
+        submitButton.textContent = "Simpan Buku";
+      }
+
+      async function editBook(id) {
+        const book = books.find((b) => b.id === id);
+        if (book) {
+          document.getElementById("bookId").value = book.id;
+          document.getElementById("title").value = book.title;
+          document.getElementById("author").value = book.author;
+          document.getElementById("published_at").value = book.published_at.split("T")[0];
+          const submitButton = document.querySelector('#bookForm button[type="submit"]');
+          submitButton.textContent = "Update Buku";
+          document.getElementById("title").focus();
+        }
+      }
+
+      document.getElementById("bookForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const bookId = document.getElementById("bookId").value;
+        const bookData = {
+          title: document.getElementById("title").value,
+          author: document.getElementById("author").value,
+          published_at: document.getElementById("published_at").value,
+        };
+
+        try {
+          if (bookId) {
+            await axios.put(`${API_URL}/books/${bookId}`, bookData);
+          } else {
+            await axios.post(`${API_URL}/books`, bookData);
+          }
+          clearForm();
+          fetchBooks();
+        } catch (error) {
+          console.error("Error saving book:", error);
+        }
+      });
+
+      async function deleteBook(id) {
+        if (confirm("Are you sure you want to delete this book?")) {
+          try {
+            await axios.delete(`${API_URL}/books/${id}`);
+            fetchBooks();
+          } catch (error) {
+            console.error("Error deleting book:", error);
+          }
+        }
+      }
+
+      // Initial load
+      fetchBooks();
+    </script>
+  </body>
+</html>
