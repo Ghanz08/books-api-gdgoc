@@ -4,7 +4,7 @@ const mysql = require("mysql2");
 const bodyParser = require("body-parser");
 
 const app = express();
-const port = 8000;  // Changed to match Postman collection port
+const port = 8000;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -14,7 +14,7 @@ const connection = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "",
-  database: "library_gdgoc"
+  database: "booksapi_library_gdgoc"
 });
 
 // Check database connection
@@ -43,10 +43,10 @@ app.get("/", (req, res) => {
 
 // CREATE: Add new book
 app.post("/api/books", (req, res) => {
-  const { title, author, published_at } = req.body;
-  const query = "INSERT INTO books (title, author, published_at) VALUES (?, ?, ?)";
+  const { title, author, published_at, genre } = req.body;
+  const query = "INSERT INTO books (title, author, published_at, genre) VALUES (?, ?, ?, ?)";
 
-  connection.query(query, [title, author, published_at], (err, result) => {
+  connection.query(query, [title, author, published_at, genre], (err, result) => {
     if (err) {
       return res.status(500).json({ message: "Failed to create book" });
     }
@@ -119,14 +119,15 @@ app.put("/api/books/:id", (req, res) => {
     const updatedBook = {
       title: updates.title || currentBook.title,
       author: updates.author || currentBook.author,
-      published_at: updates.published_at || currentBook.published_at
+      published_at: updates.published_at || currentBook.published_at,
+      genre: updates.genre || currentBook.genre
     };
 
     // Update the book
-    const query = "UPDATE books SET title = ?, author = ?, published_at = ? WHERE id = ?";
+    const query = "UPDATE books SET title = ?, author = ?, published_at = ?, genre = ? WHERE id = ?";
     connection.query(
       query,
-      [updatedBook.title, updatedBook.author, updatedBook.published_at, bookId],
+      [updatedBook.title, updatedBook.author, updatedBook.published_at, updatedBook.genre, bookId],
       (err) => {
         if (err) {
           return res.status(500).json({ message: "Failed to update book" });
