@@ -4,29 +4,28 @@ const mysql = require("mysql2");
 const bodyParser = require("body-parser");
 
 const app = express();
-const port = 8000;
+const port = 3030;
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// Database configuration
-const connection = mysql.createConnection({
+const pool = mysql.createPool({
   host: "localhost",
-  user: "root",
-  password: "",
-  database: "booksapi_library_gdgoc"
+  user: "booksapi_ghani08",
+  password: "(K_z(z2&?Z&n",
+  database: "booksapi_library_gdgoc",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+  connectTimeout: 10000,
+  acquireTimeout: 10000,
 });
 
-// Check database connection
-connection.connect((err) => {
-  if (err) {
-    console.error("Database connection error:", err);
-    return;
-  }
-  console.log("Successfully connected to MySQL database");
-});
+const promisePool = pool.promise();
 
-// Root route - Menambahkan homepage
+// Root route
 app.get("/", (req, res) => {
   res.send(`
     <h1>Library Books REST API</h1>
@@ -42,142 +41,156 @@ app.get("/", (req, res) => {
 });
 
 // CREATE: Add new book
-app.post("/api/books", (req, res) => {
-  const { title, author, published_at, genre } = req.body;
-  const query = "INSERT INTO books (title, author, published_at, genre) VALUES (?, ?, ?, ?)";
+app.post("/api/books", async (req, res) => {
+  try {
+    const { title, author, published_at } = req.body;
+    
+    // Get current timestamp in the required format
+    const now = new Date().toISOString();
+    
+    const query = `
+      INSERT INTO books (title, author, published_at, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    
+    const [result] = await promisePool.execute(query, [
+      title, 
+      author, 
+      published_at,
+      now,
+      now
+    ]);
+    
+    const [rows] = await promisePool.execute(
+      "SELECT * FROM books WHERE id = ?", 
+      [result.insertId]
+    );
 
-  connection.query(query, [title, author, published_at, genre], (err, result) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to create book" });
-    }
-
-    // Fetch the created book to return in response
-    const selectQuery = "SELECT * FROM books WHERE id = ?";
-    connection.query(selectQuery, [result.insertId], (err, rows) => {
-      if (err) {
-        return res.status(500).json({ message: "Failed to fetch created book" });
-      }
-
-      res.status(201).json({
-        message: "Book created successfully",
-        data: rows[0]
-      });
+    res.status(201).json({
+      message: "Book created successfully",
+      data: rows[0]
     });
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to create book" });
+  }
 });
 
 // READ: Get all books
-app.get("/api/books", (req, res) => {
-  const query = "SELECT * FROM books";
-
-  connection.query(query, (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to fetch books" });
-    }
-    res.status(200).json({
-      data: results
-    });
-  });
+app.get("/api/books", async (req, res) => {
+  try {
+    const [rows] = await promisePool.query("SELECT * FROM books");
+    res.status(200).json({ data: rows });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch books" });
+  }
 });
 
 // READ: Get single book
-app.get("/api/books/:id", (req, res) => {
-  const bookId = req.params.id;
-  const query = "SELECT * FROM books WHERE id = ?";
-
-  connection.query(query, [bookId], (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to fetch book" });
-    }
-
-    if (results.length === 0) {
+app.get("/api/books/:id", async (req, res) => {
+  try {
+    const [rows] = await promisePool.execute(
+      "SELECT * FROM books WHERE id = ?", 
+      [req.params.id]
+    );
+    
+    if (rows.length === 0) {
       return res.status(404).json({ message: "Book not found" });
     }
-
-    res.status(200).json({
-      data: results[0]
-    });
-  });
+    
+    res.status(200).json({ data: rows[0] });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch book" });
+  }
 });
 
 // UPDATE: Update book
-app.put("/api/books/:id", (req, res) => {
-  const bookId = req.params.id;
-  const updates = req.body;
-
-  // First check if book exists
-  connection.query("SELECT * FROM books WHERE id = ?", [bookId], (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to fetch book" });
-    }
-
-    if (results.length === 0) {
+app.put("/api/books/:id", async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    const updates = req.body;
+    
+    // First check if book exists
+    const [existingBook] = await promisePool.execute(
+      "SELECT * FROM books WHERE id = ?", 
+      [bookId]
+    );
+    
+    if (existingBook.length === 0) {
       return res.status(404).json({ message: "Book not found" });
     }
-
-    const currentBook = results[0];
+    
+    const currentBook = existingBook[0];
     const updatedBook = {
       title: updates.title || currentBook.title,
       author: updates.author || currentBook.author,
       published_at: updates.published_at || currentBook.published_at,
-      genre: updates.genre || currentBook.genre
+      updated_at: new Date().toISOString()
     };
-
-    // Update the book
-    const query = "UPDATE books SET title = ?, author = ?, published_at = ?, genre = ? WHERE id = ?";
-    connection.query(
-      query,
-      [updatedBook.title, updatedBook.author, updatedBook.published_at, updatedBook.genre, bookId],
-      (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Failed to update book" });
-        }
-
-        // Fetch and return the updated book
-        connection.query("SELECT * FROM books WHERE id = ?", [bookId], (err, results) => {
-          if (err) {
-            return res.status(500).json({ message: "Failed to fetch updated book" });
-          }
-
-          res.status(200).json({
-            message: "Book updated successfully",
-            data: results[0]
-          });
-        });
-      }
+    
+    await promisePool.execute(
+      "UPDATE books SET title = ?, author = ?, published_at = ?, updated_at = ? WHERE id = ?",
+      [
+        updatedBook.title, 
+        updatedBook.author, 
+        updatedBook.published_at,
+        updatedBook.updated_at,
+        bookId
+      ]
     );
-  });
+    
+    const [rows] = await promisePool.execute(
+      "SELECT * FROM books WHERE id = ?", 
+      [bookId]
+    );
+    
+    res.status(200).json({
+      message: "Book updated successfully",
+      data: rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update book" });
+  }
 });
 
 // DELETE: Delete book
-app.delete("/api/books/:id", (req, res) => {
-  const bookId = req.params.id;
-
-  // First check if book exists
-  connection.query("SELECT * FROM books WHERE id = ?", [bookId], (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Failed to fetch book" });
-    }
-
-    if (results.length === 0) {
+app.delete("/api/books/:id", async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    
+    // Check if book exists
+    const [existingBook] = await promisePool.execute(
+      "SELECT * FROM books WHERE id = ?", 
+      [bookId]
+    );
+    
+    if (existingBook.length === 0) {
       return res.status(404).json({ message: "Book not found" });
     }
-
-    // Delete the book
-    const query = "DELETE FROM books WHERE id = ?";
-    connection.query(query, [bookId], (err) => {
-      if (err) {
-        return res.status(500).json({ message: "Failed to delete book" });
-      }
-
-      res.status(200).json({
-        message: "Book deleted successfully"
-      });
+    
+    await promisePool.execute(
+      "DELETE FROM books WHERE id = ?", 
+      [bookId]
+    );
+    
+    res.status(200).json({
+      message: "Book deleted successfully"
     });
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to delete book" });
+  }
 });
 
 // Start server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+});
+
+// Handle process termination
+process.on('SIGINT', () => {
+  pool.end((err) => {
+    if (err) {
+      console.error('Error closing pool:', err);
+    }
+    process.exit(0);
+  });
 });
